@@ -4,6 +4,12 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection
 from graphviz import Digraph
 
+# Page setting
+st.set_page_config(layout="wide", page_title="Plastic Rewinding")
+
+with open('style.css') as f:
+    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
 # Function to create a flow diagram for a given variant
 def create_variant_diagram(variant_text):
     steps = variant_text.split(',')
