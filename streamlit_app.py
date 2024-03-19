@@ -8,6 +8,7 @@ conn = st.connection("supabase",type=SupabaseConnection)
 
 # Perform query.
 rows = conn.query("*", table="all_variants", ttl="10m").execute()
+st.write(rows)
 
 # Print results.
 for row in rows.data:
