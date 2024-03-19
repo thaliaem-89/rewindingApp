@@ -10,5 +10,5 @@ conn = st.connection("supabase",type=SupabaseConnection)
 rows = conn.query("*", table="all_variants", ttl="10m").execute()
 
 # Print results.
-for row in rows.data[1:10]:
+for row in rows.data:
     st.write(f" machine {row['machine']} has a variant :{row['variant']}:")
