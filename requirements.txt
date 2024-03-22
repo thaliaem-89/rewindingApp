@@ -1,3 +1,8 @@
 streamlit
 st-supabase-connection == 1.2.2
 graphviz
+plotly.express
+#custom_dynamic_filters
+streamlit-option-menu
+streamlit-dynamic-filters
+streamlit_file_browser
