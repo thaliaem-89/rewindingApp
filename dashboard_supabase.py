@@ -41,6 +41,7 @@ custom_css = """
     }
     [data-baseweb="select"] .st-b6 {
         color: white; /* Attempting to target the displayed value */
+        background-color: #256b6d
     }
 </style>
 
@@ -86,8 +87,10 @@ if selected == "Variants":
 
 
     dynamic_filters = DynamicFilters(df, filters=['machine', 'Variant Rank', 'week_number'], identifier='set1')
-    dynamic_filters.set_default_values({'machine': "M001", 'Variant Rank': '1'})
+    dynamic_filters.set_default_values({'machine': "M001"})
     dynamic_filters.display_filters(location='columns', num_columns=3, gap='large')
+    #dynamic_filters.set_default_values({'Variant Rank': "1"})
+
 
     machine_filter_value = dynamic_filters.get_filter_value('machine')[0] if dynamic_filters.get_filter_value('machine') else None
     variant_filter_value = dynamic_filters.get_filter_value('Variant Rank')[0] if dynamic_filters.get_filter_value('Variant Rank') else None
@@ -169,7 +172,8 @@ elif selected == "Steps":
     df = df.sort_values(by='Variant Rank', ascending=True)
     #print(df)
     # Display the dynamic filters
-    dynamic_filters2 = DynamicFilters(df, filters=['concept:name', 'Variant Rank'], identifier='set2')
+    dynamic_filters2 = DynamicFilters(df, filters=['Variant Rank','concept:name'], identifier='set2')
+    #dynamic_filters2.set_default_values({'Variant Rank': "1"})
     #print(dynamic_filters2)
 
     dynamic_filters2.display_filters(location='columns', num_columns=2, gap='large')
@@ -185,6 +189,8 @@ elif selected == "Steps":
     if df.empty:
         st.write("No data available for the selected machine.")
     else:
+        variant_filter_value = dynamic_filters2.get_filter_value('Variant Rank')[0] if dynamic_filters2.get_filter_value(
+            'Variant Rank') else None
 
         # Here we add KPIs and visualization code
         filtered_df = dynamic_filters2.filter_df()
@@ -199,21 +205,57 @@ elif selected == "Steps":
         kpi2.metric(label="Filtered Variants Count", value=f"{filtered_count}")
         kpi3.metric(label="Total Variants Count", value=f"{all_count}")
 
+
         # Example histogram for cycle durations
         fig_col1, fig_col2 = st.columns(2)
         with fig_col1:
-            filtered_df['Duration (Minutes)'] = filtered_df['Duration (Seconds)'] / 60
-            fig = px.histogram(filtered_df, x='Duration (Minutes)', nbins=20, title='Cycle Duration Distribution', color_discrete_sequence=['#256b6d'])
-            st.plotly_chart(fig, use_container_width=True)
 
-        # Placeholder for process map visualization in fig_col2
+            variant_rank_filter_values = dynamic_filters2.get_filter_value('Variant Rank') if dynamic_filters2.get_filter_value('Variant Rank') else None
+            if variant_rank_filter_values:
+                for i,variant_rank in enumerate(variant_rank_filter_values):
+                    st.markdown(f"<h6>Process Map {variant_rank} </h6>", unsafe_allow_html=True)
+                    # st.markdown("Process Map")
+                    # print(dynamic_filters.filter_df()['Variant'])
+                    filtered_variant_text = str(filtered_df[filtered_df['Variant Rank'] == variant_rank]['Variant'].iloc[0])
+                    print(filtered_variant_text)
+                    # st.header(f'Variant Rank 1 Flow Diagram for {machine_filter_value}')
+                    diagram = create_variant_diagram(filtered_variant_text)
+                    st.graphviz_chart(str(diagram))
+            else:
+                count_filtered_variants = filtered_df['Variant Rank'].unique().shape[0]
+                if count_filtered_variants >= 3:
+                    variant_rank_show_graph = filtered_df['Variant Rank'].unique()[:3]
+                else:
+                    variant_rank_show_graph = filtered_df['Variant Rank'].unique()
+                    print(variant_rank_show_graph)
+
+                for variant_rank in variant_rank_show_graph:  # Corrected iteration here
+                    st.markdown(f"<h6>Process Map {variant_rank} </h6>", unsafe_allow_html=True)
+                    # Make sure to filter the DataFrame safely
+                    filtered_variant_df = filtered_df[filtered_df['Variant Rank'] == variant_rank]
+                    if not filtered_variant_df.empty:
+                        filtered_variant_text = str(filtered_variant_df['Variant'].iloc[0])
+                        # Here you can include your logic for creating and displaying the diagram
+                        diagram = create_variant_diagram(filtered_variant_text)
+                        st.graphviz_chart(str(diagram))
+                    else:
+                        st.markdown(f"<h6>No data available for Variant Rank {variant_rank}.</h6>",
+                                    unsafe_allow_html=True)
+
         with fig_col2:
-            st.markdown("### Process Map Placeholder")
-            # Assuming `create_variant_diagram` function or similar for visualization
-            # variant_filter_value = dynamic_filters2.get_filter_value('Variant Rank')[0]
-            # diagram = create_variant_diagram(filtered_variant)
-            # st.graphviz_chart(str(diagram))
-            st.write("Process map visualization would go here.")
+
+            step_filter_values = dynamic_filters2.get_filter_value('concept:name') if dynamic_filters2.get_filter_value('concept:name') else None
+
+            if not filtered_df.empty:
+
+                steps_to_graph = filtered_df['concept:name'].unique()
+
+                for i, step in enumerate(steps_to_graph):
+                    filtered_df_and_by_step= filtered_df[filtered_df['concept:name']== step]
+                    filtered_df_and_by_step['Duration (Minutes)']= filtered_df_and_by_step['Duration (Seconds)']/60
+                    fig = px.histogram(filtered_df_and_by_step, x='Duration (Minutes)', nbins=20, title=f'{step} Duration Distribution',
+                                   color_discrete_sequence=['#256b6d'])
+                    st.plotly_chart(fig, use_container_width=True)
 
         # Display detailed data view
         st.markdown("### Detailed Data View")
