@@ -1,8 +1,9 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import time
+import datetime
 import plotly.express as px
+
 
 from streamlit_option_menu import option_menu
 from custom_dynamic_filters import DynamicFilters
@@ -68,6 +69,29 @@ def fetch_data(table_name):
         print("Unexpected response format or no data found.")
         return pd.DataFrame()
 
+def df_filter(message,df):
+    # Get today's date
+    today = datetime.date.today()
+
+    # Set default value for the slider: today (00:00:00 to 23:59:59.999999)
+    default_value = (
+        datetime.datetime(year=today.year, month=today.month, day=today.day),
+        datetime.datetime(year=today.year, month=today.month, day=today.day, hour=23, minute=59, second=59,
+                          microsecond=999999)
+    )
+
+    dates_selection = st.slider('%s' % (message),
+                                   min_value = min(df['time']),
+                                   max_value = max(df['time']),
+                                   value =default_value,
+                                format= "dddd, MMMM Do YYYY, h:mm:ss a",
+                                step=datetime.timedelta(minutes=15))
+    mask = df['time'].between(*dates_selection)
+    number_of_results = df[mask].shape[0]
+    #print(number_of_results)
+    filtered_df = df[mask]
+    return filtered_df, number_of_results
+
 
 if selected == "Throughput":
 
@@ -83,7 +107,9 @@ if selected == "Throughput":
 
 
     #df_filtered= df.loc[df['time_column'].between(start_datetime, end_datetime)]
-    df_filtered= df
+    st.header('Datetime Filter')
+    df_filtered, number_of_results = df_filter('Move sliders to filter dataframe',df)
+    st.caption(f"{number_of_results} results")
 
 
     dynamic_filters = DynamicFilters(df_filtered, filters=['color', 'section'], identifier='set1')
@@ -94,6 +120,73 @@ if selected == "Throughput":
 
     color_filter_value = dynamic_filters.get_filter_value('color')[0] if dynamic_filters.get_filter_value('color') else None
     section_filter_value = dynamic_filters.get_filter_value('section')[0] if dynamic_filters.get_filter_value('section') else None
+
+    data=dynamic_filters.filter_df()
+
+    # Group data by hour (or desired time interval) and color
+    hourly_data = (
+        data.groupby([data['time'].dt.floor('H'), 'color'])
+            .size()
+            .to_frame(name='count')
+            .reset_index()
+    )
+
+    # Get total production per hour
+    total_production_per_hour = data.groupby(data['time'].dt.floor('H')).size().to_frame(name='count')
+    total_production_per_hour.reset_index(inplace=True)
+
+    # Streamlit app layout
+    st.title("Production Line Analysis")
+
+    # User input for selecting time range (optional)
+    selected_date = st.date_input("Select Date (Optional)", min_value=min(data['time'].dt.date),
+                                  max_value=max(data['time'].dt.date))
+
+    if selected_date:
+        # Filter data based on selected date
+        data_filtered = data.loc[data['time'].dt.date == selected_date]
+        hourly_data_filtered = (
+            data_filtered.groupby([data_filtered['time'].dt.floor('H'), 'color'])
+                .size()
+                .to_frame(name='count')
+                .reset_index()
+        )
+        total_production_per_hour_filtered = (
+            data_filtered.groupby(data_filtered['time'].dt.floor('H')).size().to_frame(name='count')
+                .reset_index()
+        )
+    else:
+        # Use all data if no date is selected
+        data_filtered = data.copy()
+        hourly_data_filtered = hourly_data.copy()
+        total_production_per_hour_filtered = total_production_per_hour.copy()
+
+    # Visualization options (choose or combine based on your preferences)
+
+    # Option 1: Line Chart (Total Production vs. Time)
+    st.subheader("Total Production Over Time")
+    st.line_chart(total_production_per_hour_filtered, x='time', y='count')
+
+    # Option 2: Area Chart (Production per Color vs. Time)
+    st.subheader("Production per Color Over Time (Area Chart)")
+    st.area_chart(hourly_data_filtered.pivot_table(index='time', columns='color', values='count'))
+
+    # Option 3: Bar Chart (Total and Color-Specific Production)
+    st.subheader("Total and Color-Specific Production (Bar Chart)")
+    chart_data = pd.concat(
+        [total_production_per_hour_filtered, hourly_data_filtered.rename(columns={'count': 'color_production'})],
+        axis=1)
+    st.bar_chart(chart_data, x='time', y=['count', 'color_production'])
+
+    # Option 4: Streamlit Vega-Lite (Advanced Customization)
+    # (Refer to Streamlit documentation for Vega-Lite integration)
+    st.subheader("Production Visualization (Vega-Lite)")
+    # ... (Define your Vega-Lite spec here)
+    # st.vega_lite(...)  # Example usage
+
+    # Display raw data (optional)
+    if st.checkbox("Show Raw Data"):
+        st.write(data_filtered)
 
     #image_placeholder = st.empty()
     '''
