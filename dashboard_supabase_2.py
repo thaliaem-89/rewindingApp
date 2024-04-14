@@ -108,7 +108,7 @@ if selected == "Variants":
         all_count = df['Case ID'].count()
 
         kpi1.metric(label="Duration (Min) ", value=round(avg_duration,1), delta= round(avg_duration_all,1))
-        kpi2.metric(label="Variants ", value= round(filtered_count), delta=round(all_count))
+        kpi2.metric(label="Cycles ", value= round(filtered_count), delta=round(all_count))
 
         fig_col1, fig_col0, fig_col2 = st.columns([3,1.5,2])
         with fig_col1:
@@ -201,8 +201,8 @@ elif selected == "Steps":
         # Creating KPIs
         kpi1, kpi2, kpi3 = st.columns(3)
         kpi1.metric(label="Average Duration (Min)", value=f"{avg_duration:.2f}")
-        kpi2.metric(label="Filtered Variants Count", value=f"{filtered_count}")
-        kpi3.metric(label="Total Variants Count", value=f"{all_count}")
+        kpi2.metric(label="Filtered Cycles Count", value=f"{filtered_count}")
+        kpi3.metric(label="Total Cycles Count", value=f"{all_count}")
 
 
         # Example histogram for cycle durations
