@@ -206,6 +206,7 @@ elif selected == "Steps":
         kpi3.metric(label="Total Variants Count", value=f"{all_count}")
 
 
+
         # Example histogram for cycle durations
         fig_col1, fig_col2 = st.columns(2)
         with fig_col1:
