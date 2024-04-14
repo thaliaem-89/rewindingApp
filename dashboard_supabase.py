@@ -1,13 +1,16 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import time
+import datetime
 import plotly.express as px
+
 
 from streamlit_option_menu import option_menu
 from custom_dynamic_filters import DynamicFilters
-from streamlit_file_browser import st_file_browser
+#from streamlit_file_browser import st_file_browser
 from st_supabase_connection import SupabaseConnection
+
+
 from graphviz import Digraph
 
 st.set_page_config(layout="wide")
@@ -20,7 +23,7 @@ conn = st.connection("supabase", type=SupabaseConnection)
 with st.sidebar:
     selected = option_menu(
         menu_title="Main Menu",
-        options=["Variants", "Steps", "Reports"],
+        options=["Throughput", "Workforce Allocation", "Utilization"],
         icons=["bar-chart-steps", "gear", "folder"],
         menu_icon="menu-app",
         default_index=0,
@@ -66,38 +69,128 @@ def fetch_data(table_name):
         print("Unexpected response format or no data found.")
         return pd.DataFrame()
 
-# Function to create a flow diagram for a given variant
-def create_variant_diagram(variant_text):
-    steps = variant_text.split(',')
-    dot = Digraph()
-    for i, step in enumerate(steps):
-        dot.node(str(i), step)
-        if i > 0:
-            dot.edge(str(i-1), str(i))
-    return dot
+def df_filter(message,df):
+    # Get today's date
+    today = datetime.date.today()
 
-if selected == "Variants":
+    # Set default value for the slider: today (00:00:00 to 23:59:59.999999)
+    default_value = (
+        datetime.datetime(year=today.year, month=today.month, day=today.day),
+        datetime.datetime(year=today.year, month=today.month, day=today.day, hour=23, minute=59, second=59,
+                          microsecond=999999)
+    )
+
+    dates_selection = st.slider('%s' % (message),
+                                   min_value = min(df['time']),
+                                   max_value = max(df['time']),
+                                   value =default_value,
+                                format= "dddd, MMMM Do YYYY, h:mm:ss a",
+                                step=datetime.timedelta(minutes=15))
+    mask = df['time'].between(*dates_selection)
+    number_of_results = df[mask].shape[0]
+    #print(number_of_results)
+    filtered_df = df[mask]
+    return filtered_df, number_of_results
+
+
+if selected == "Throughput":
 
     st.title(f":grey[{selected} Analysis]")
 
-    df = fetch_data("all_variants")
+    df = fetch_data("ch1_bags_count_prod")
     #print(df)
     #print(df.head())
-    df = df.sort_values(by='Variant Rank', ascending=True)
+    #df = df.sort_values(by='Variant Rank', ascending=True)
+
+    # Ensure the time column is datetime format
+    df["time"] = pd.to_datetime(df["time"])
 
 
-    dynamic_filters = DynamicFilters(df, filters=['machine', 'Variant Rank', 'week_number'], identifier='set1')
-    dynamic_filters.set_default_values({'machine': "M001"})
-    dynamic_filters.display_filters(location='columns', num_columns=3, gap='large')
+    #df_filtered= df.loc[df['time_column'].between(start_datetime, end_datetime)]
+    st.header('Datetime Filter')
+    df_filtered, number_of_results = df_filter('Move sliders to filter dataframe',df)
+    st.caption(f"{number_of_results} results")
+
+
+    dynamic_filters = DynamicFilters(df_filtered, filters=['color', 'section'], identifier='set1')
+    #dynamic_filters.set_default_values({'machine': "M001"})
+    dynamic_filters.display_filters(location='columns', num_columns=2, gap='large')
     #dynamic_filters.set_default_values({'Variant Rank': "1"})
 
 
-    machine_filter_value = dynamic_filters.get_filter_value('machine')[0] if dynamic_filters.get_filter_value('machine') else None
-    variant_filter_value = dynamic_filters.get_filter_value('Variant Rank')[0] if dynamic_filters.get_filter_value('Variant Rank') else None
+    color_filter_value = dynamic_filters.get_filter_value('color')[0] if dynamic_filters.get_filter_value('color') else None
+    section_filter_value = dynamic_filters.get_filter_value('section')[0] if dynamic_filters.get_filter_value('section') else None
 
-    image_placeholder = st.empty()
+    data=dynamic_filters.filter_df()
 
-    if machine_filter_value and variant_filter_value:
+    # Group data by hour (or desired time interval) and color
+    hourly_data = (
+        data.groupby([data['time'].dt.floor('H'), 'color'])
+            .size()
+            .to_frame(name='count')
+            .reset_index()
+    )
+
+    # Get total production per hour
+    total_production_per_hour = data.groupby(data['time'].dt.floor('H')).size().to_frame(name='count')
+    total_production_per_hour.reset_index(inplace=True)
+
+    # Streamlit app layout
+    st.title("Production Line Analysis")
+
+    # User input for selecting time range (optional)
+    selected_date = st.date_input("Select Date (Optional)", min_value=min(data['time'].dt.date),
+                                  max_value=max(data['time'].dt.date))
+
+    if selected_date:
+        # Filter data based on selected date
+        data_filtered = data.loc[data['time'].dt.date == selected_date]
+        hourly_data_filtered = (
+            data_filtered.groupby([data_filtered['time'].dt.floor('H'), 'color'])
+                .size()
+                .to_frame(name='count')
+                .reset_index()
+        )
+        total_production_per_hour_filtered = (
+            data_filtered.groupby(data_filtered['time'].dt.floor('H')).size().to_frame(name='count')
+                .reset_index()
+        )
+    else:
+        # Use all data if no date is selected
+        data_filtered = data.copy()
+        hourly_data_filtered = hourly_data.copy()
+        total_production_per_hour_filtered = total_production_per_hour.copy()
+
+    # Visualization options (choose or combine based on your preferences)
+
+    # Option 1: Line Chart (Total Production vs. Time)
+    st.subheader("Total Production Over Time")
+    st.line_chart(total_production_per_hour_filtered, x='time', y='count')
+
+    # Option 2: Area Chart (Production per Color vs. Time)
+    st.subheader("Production per Color Over Time (Area Chart)")
+    st.area_chart(hourly_data_filtered.pivot_table(index='time', columns='color', values='count'))
+
+    # Option 3: Bar Chart (Total and Color-Specific Production)
+    st.subheader("Total and Color-Specific Production (Bar Chart)")
+    chart_data = pd.concat(
+        [total_production_per_hour_filtered, hourly_data_filtered.rename(columns={'count': 'color_production'})],
+        axis=1)
+    st.bar_chart(chart_data, x='time', y=['count', 'color_production'])
+
+    # Option 4: Streamlit Vega-Lite (Advanced Customization)
+    # (Refer to Streamlit documentation for Vega-Lite integration)
+    st.subheader("Production Visualization (Vega-Lite)")
+    # ... (Define your Vega-Lite spec here)
+    # st.vega_lite(...)  # Example usage
+
+    # Display raw data (optional)
+    if st.checkbox("Show Raw Data"):
+        st.write(data_filtered)
+
+    #image_placeholder = st.empty()
+    '''
+    if color_filter_value and section_filter_value:
         #image_filename = f'data/{machine_filter_value}__{variant_filter_value}.png'
 
         kpi1, kpi2, kpi3 = st.columns(3)
@@ -143,10 +236,10 @@ if selected == "Variants":
             diagram = create_variant_diagram(filtered_variant)
             st.graphviz_chart(str(diagram))
             #st.image(image_filename)
+    '''
 
-
-        st.markdown("### Detailed Data View")
-        dynamic_filters.display_df()
+    st.markdown("### Detailed Data View")
+    dynamic_filters.display_df()
 
 elif selected == "Steps":
     st.title(f":grey[{selected} Analysis]")
